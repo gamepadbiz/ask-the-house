@@ -12,12 +12,17 @@
 .category-icon{display:block;font-size:26px;margin-bottom:5px}
 .category-count{display:block;color:var(--muted);font-size:12px;margin-top:3px;font-weight:700}
 .house-head{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}.house-switch{border:1px solid var(--line);background:white;border-radius:14px;padding:9px 12px;font-weight:800;max-width:230px}.card-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.card-actions .btn{padding:9px 12px;font-size:13px}.danger{color:var(--danger)}
+
+.share-modal{position:fixed;inset:0;background:rgba(25,32,28,.58);display:grid;place-items:center;padding:18px;z-index:50}
+.share-box{width:min(520px,100%);background:var(--paper);border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow);padding:22px}
+.share-box h3{font-size:24px;margin-bottom:8px}.share-box p{color:var(--muted);line-height:1.5;margin:0 0 16px}
+.share-box .actions .btn{flex:1}.share-preview{font-size:12px;color:var(--muted);word-break:break-all;background:white;border:1px solid var(--line);border-radius:12px;padding:10px;margin-bottom:14px;max-height:90px;overflow:auto}
 @media(max-width:720px){.app{padding:10px}.mode-grid,.grid,.entries{grid-template-columns:1fr}.top{align-items:flex-start}.badge{font-size:11px}.actions .btn,.toolbar .btn,.ask .btn{width:100%}.ask{flex-direction:column}.setup-row{grid-template-columns:1fr}.category-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 </style>
 </head>
 <body>
 <div class="app">
-<header class="top"><div class="brand"><div class="mark">🏠</div><div><b>Ask the House</b><small>One private family app</small></div></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end"><select id="houseSwitch" class="house-switch" aria-label="Choose House"></select><div class="badge">Local on this device • v0.9</div></div></header>
+<header class="top"><div class="brand"><div class="mark">🏠</div><div><b>Ask the House</b><small>One private family app</small></div></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end"><select id="houseSwitch" class="house-switch" aria-label="Choose House"></select><div class="badge">Local on this device • v0.9.1</div></div></header>
 <div id="nav" class="nav hidden"><button class="btn secondary" data-view="home">🏠 Home</button><button class="btn secondary" data-view="add">❤️ Add</button><button class="btn secondary" data-view="ask">🔎 Ask</button><button class="btn secondary" data-view="house">📚 The House</button></div>
 <section id="homeView" class="panel"><div class="small" style="font-weight:850;color:var(--green);text-transform:uppercase;letter-spacing:.08em">Welcome home</div><h1>What would you like to do?</h1><p class="lead">Parents and children use the same app.</p><div class="mode-grid"><button class="mode-btn" data-go="add"><div class="mode-icon">❤️</div><div class="mode-title">Add something</div><div class="mode-copy">Save an instruction, answer, story, or memory—and send it to family.</div></button><button class="mode-btn" data-go="ask"><div class="mode-icon">🔎</div><div class="mode-title">Ask the House</div><div class="mode-copy">Search everything this device has received from the family.</div></button></div><div id="receivedNotice" class="notice hidden"></div></section>
 <section id="addView" class="panel hidden"><h2 id="addHeading">Add something to the House</h2><p class="lead">Save it here, then share the new House updates with family by text or email.</p><div id="editNotice" class="notice warning hidden"><b>Editing an existing item.</b> Saving updates the original item.</div><form id="entryForm"><div class="grid"><div class="field"><label for="title">Short title</label><input id="title" maxlength="100" placeholder="Main water shutoff" required></div><div class="field"><label for="contributor">Who is adding this?</label><input id="contributor" placeholder="Mom, Dad, Mike…" required></div><div class="field"><label for="category">Where does it belong?</label><select id="category"><option>Home</option><option>Kitchen</option><option>Garage</option><option>Yard</option><option>Car</option><option>Family</option><option>Memories</option><option>Medical</option><option>Finances</option><option>Documents</option><option>Faith</option><option>Other</option></select></div><div class="field"><label for="tags">Helpful words</label><input id="tags" placeholder="valve, basement, emergency"><div class="hint">Optional. Separate with commas.</div></div></div><div class="field"><label for="text">What should the family know?</label><textarea id="text" placeholder="Type the answer, instructions, or story here..." required></textarea></div><div class="actions"><button class="btn primary" type="submit">❤️ Save and Send to Family</button><button id="saveOnlyBtn" class="btn secondary" type="button">Save only on this device</button><button id="cancelEditBtn" class="btn secondary hidden" type="button">Cancel edit</button></div></form></section>
@@ -32,7 +37,20 @@
 <div id="entries" class="entries"></div>
 </section>
 
-</div><div id="toast" class="toast"></div>
+</div>
+<div id="shareModal" class="share-modal hidden" role="dialog" aria-modal="true" aria-labelledby="shareModalTitle">
+  <div class="share-box">
+    <h3 id="shareModalTitle">Your family update is ready</h3>
+    <p>Tap <b>Share now</b>. This second tap lets your phone open its sharing menu.</p>
+    <div id="sharePreview" class="share-preview"></div>
+    <div class="actions">
+      <button id="shareNowBtn" class="btn primary" type="button">📤 Share now</button>
+      <button id="copyShareBtn" class="btn secondary" type="button">📋 Copy message</button>
+      <button id="closeShareBtn" class="btn secondary" type="button">Cancel</button>
+    </div>
+  </div>
+</div>
+<div id="toast" class="toast"></div>
 <script>
 const DB_NAME='askTheHouseMultiDB',DB_VERSION=1,STORE='entries',HOUSES_KEY='askTheHouseHousesV1',ACTIVE_KEY='askTheHouseActiveV1';
 const SHARE_WORKER_URL='https://ask-the-house-share.gamepadbiz.workers.dev',SHARE_TTL_DAYS=90;
@@ -58,8 +76,45 @@ async function keyFromSecret(secret){return crypto.subtle.importKey('raw',b64ToB
 async function encryptPackage(obj,secret){const iv=new Uint8Array(12);crypto.getRandomValues(iv);const key=await keyFromSecret(secret),plain=new TextEncoder().encode(JSON.stringify(obj));const cipher=new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv},key,plain));return{iv:bytesToB64(iv),data:bytesToB64(cipher)}}
 async function decryptPackage(wrap,secret){const key=await keyFromSecret(secret);const plain=await crypto.subtle.decrypt({name:'AES-GCM',iv:b64ToBytes(wrap.iv)},key,b64ToBytes(wrap.data));return JSON.parse(new TextDecoder().decode(plain))}
 function baseUrl(){return(location.protocol==='https:'||location.protocol==='http:')?location.href.split('#')[0]:''}
+
+let pendingShare=null;
+function closeShareModal(){pendingShare=null;$('shareModal').classList.add('hidden')}
+async function copyShareMessage(){
+  if(!pendingShare)return;
+  try{
+    await navigator.clipboard.writeText(pendingShare.message);
+    toast('Share message copied.');
+    closeShareModal();
+  }catch{
+    prompt('Copy this message:',pendingShare.message);
+  }
+}
+function prepareShare(title,message,url){
+  pendingShare={title,message,url};
+  $('sharePreview').textContent=url;
+  $('shareModal').classList.remove('hidden');
+}
+async function openPreparedShare(){
+  if(!pendingShare)return;
+  const s=pendingShare;
+  try{
+    if(navigator.share){
+      await navigator.share({title:s.title,text:s.message});
+      closeShareModal();
+      show('home');
+    }else{
+      await copyShareMessage();
+    }
+  }catch(err){
+    if(err?.name!=='AbortError'){
+      console.error('Share menu error:',err);
+      await copyShareMessage();
+    }
+  }
+}
+
 async function postShareEnvelope(env){const r=await fetch(SHARE_WORKER_URL+'/share',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(env)});if(!r.ok)throw new Error('Share service unavailable');const out=await r.json();if(!out?.id)throw new Error('Invalid share response');return out.id}
-async function makeShareUrl(entries,kind='update'){const h=activeHouse(),b=baseUrl();if(!b||!h)return'';const payload={format:'ask-the-house-secure',version:'0.9',kind,houseId:h.id,houseName:h.name,sentAt:now(),entries};const encrypted=await encryptPackage(payload,h.secret);const storedEnv={format:'ath-envelope',version:'0.9',houseId:h.id,houseName:h.name,kind,iv:encrypted.iv,data:encrypted.data};try{const id=await postShareEnvelope(storedEnv);return b+'#share='+encodeURIComponent(id)+'&key='+encodeURIComponent(h.secret)}catch(err){console.warn('Short-link service unavailable; using long-link fallback.',err);const fallbackEnv={...storedEnv,inviteSecret:h.secret};return b+'#house='+bytesToB64(new TextEncoder().encode(JSON.stringify(fallbackEnv)))}}
+async function makeShareUrl(entries,kind='update'){const h=activeHouse(),b=baseUrl();if(!b||!h)return'';const payload={format:'ask-the-house-secure',version:'0.9.1',kind,houseId:h.id,houseName:h.name,sentAt:now(),entries};const encrypted=await encryptPackage(payload,h.secret);const storedEnv={format:'ath-envelope',version:'0.9.1',houseId:h.id,houseName:h.name,kind,iv:encrypted.iv,data:encrypted.data};try{const id=await postShareEnvelope(storedEnv);return b+'#share='+encodeURIComponent(id)+'&key='+encodeURIComponent(h.secret)}catch(err){console.warn('Short-link service unavailable; using long-link fallback.',err);const fallbackEnv={...storedEnv,inviteSecret:h.secret};return b+'#house='+bytesToB64(new TextEncoder().encode(JSON.stringify(fallbackEnv)))}}
 function decodeEnvelope(v){return JSON.parse(new TextDecoder().decode(b64ToBytes(v)))}
 async function fetchShareEnvelope(id){const r=await fetch(SHARE_WORKER_URL+'/share/'+encodeURIComponent(id),{method:'GET'});if(r.status===404)throw new Error('Share not found or expired');if(!r.ok)throw new Error('Share service unavailable');return r.json()}
 async function mergeForHouse(entries,houseId){const all=await getAll(),map=new Map(all.filter(x=>x.houseId===houseId).map(x=>[x.id,x]));let n=0;for(const x of entries){const incoming={...x,houseId};const old=map.get(incoming.id);if(!old||String(incoming.updatedAt)>String(old.updatedAt)){await put(incoming);n++}}return n}
@@ -74,16 +129,21 @@ function resetEditor(){$('entryForm').reset();editingId=null;$('addHeading').tex
 function startEdit(id){const e=allEntries.find(x=>x.id===id);if(!e)return;editingId=id;$('title').value=e.title||'';$('contributor').value=e.contributor||'';$('category').value=e.category||'Other';$('tags').value=(e.tags||[]).join(', ');$('text').value=e.text||'';$('addHeading').textContent='Edit this House item';$('editNotice').classList.remove('hidden');$('cancelEditBtn').classList.remove('hidden');show('add')}
 async function deleteEntry(id){const e=allEntries.find(x=>x.id===id);if(!e||!confirm(`Delete "${e.title}" from ${activeHouse()?.name||'this House'}?\n\nThe deletion will be included in the next update.`))return;await put({...e,deleted:true,updatedAt:now()});await refresh();renderCategories();selectCategory(activeCategory);toast('Deleted from this House.')}
 function formEntry(){const t=now(),old=editingId?allRecords.find(x=>x.id===editingId):null;return{id:old?.id||uid(),houseId:activeHouseId,title:$('title').value.trim(),category:$('category').value,contributor:$('contributor').value.trim(),tags:$('tags').value.split(',').map(x=>x.trim()).filter(Boolean),text:$('text').value.trim(),createdAt:old?.createdAt||t,updatedAt:t,deleted:false,sharedAt:old?.sharedAt||null}}
-async function save(send){if(!$('entryForm').reportValidity())return;const e=formEntry();await put(e);await refresh();resetEditor();toast('Saved in this House.');if(!send){show('home');return}const pending=allRecords.filter(x=>!x.sharedAt||String(x.updatedAt)>String(x.sharedAt));const url=await makeShareUrl(pending,'update');if(!url){toast('Saved. Open the hosted page to share.');return}const stamp=now();for(const item of pending){item.sharedAt=stamp;await put(item)}await refresh();const msg=`${e.contributor} shared ${pending.length} update${pending.length===1?'':'s'} from ${activeHouse().name}.\n\nTap this link and Ask the House will open the correct House automatically:\n${url}`;try{if(navigator.share)await navigator.share({title:`${activeHouse().name} update`,text:msg,url});else location.href='mailto:?subject='+encodeURIComponent(`${activeHouse().name} update`)+'&body='+encodeURIComponent(msg);show('home')}catch(err){if(err?.name!=='AbortError')toast('Saved, but the sharing menu could not open.')}}
-async function shareEntireHouse(){if(!allEntries.length){toast('There is nothing in this House to share yet.');return}if(!confirm(`Invite a family member or set up a new device with all ${allEntries.length} ${allEntries.length===1?'item':'items'} from ${activeHouse().name}?`))return;const url=await makeShareUrl(allRecords,'entire-house');if(!url){toast('Open the hosted page to share this House.');return}const msg=`You have been invited to ${activeHouse().name} in Ask the House.\n\nThis package contains ${allEntries.length} ${allEntries.length===1?'item':'items'}.\n\nTap to add and open the House:\n${url}`;try{if(navigator.share)await navigator.share({title:`Invitation to ${activeHouse().name}`,text:msg,url});else location.href='mailto:?subject='+encodeURIComponent(`Invitation to ${activeHouse().name}`)+'&body='+encodeURIComponent(msg)}catch(err){if(err?.name!=='AbortError')toast('The sharing menu could not open.')}}
+async function save(send){if(!$('entryForm').reportValidity())return;const e=formEntry();await put(e);await refresh();resetEditor();toast('Saved in this House.');if(!send){show('home');return}const pending=allRecords.filter(x=>!x.sharedAt||String(x.updatedAt)>String(x.sharedAt));const url=await makeShareUrl(pending,'update');if(!url){toast('Saved. Open the hosted page to share.');return}const stamp=now();for(const item of pending){item.sharedAt=stamp;await put(item)}await refresh();const msg=`${e.contributor} shared ${pending.length} update${pending.length===1?'':'s'} from ${activeHouse().name}.\n\nTap this link and Ask the House will open the correct House automatically:\n${url}`;prepareShare(`${activeHouse().name} update`,msg,url)}
+async function shareEntireHouse(){if(!allEntries.length){toast('There is nothing in this House to share yet.');return}if(!confirm(`Invite a family member or set up a new device with all ${allEntries.length} ${allEntries.length===1?'item':'items'} from ${activeHouse().name}?`))return;const url=await makeShareUrl(allRecords,'entire-house');if(!url){toast('Open the hosted page to share this House.');return}const msg=`You have been invited to ${activeHouse().name} in Ask the House.\n\nThis package contains ${allEntries.length} ${allEntries.length===1?'item':'items'}.\n\nTap to add and open the House:\n${url}`;prepareShare(`Invitation to ${activeHouse().name}`,msg,url)}
 function ask(){const q=$('query').value.trim();$('answer').classList.add('show');if(!q){$('answerText').textContent='Ask anything—even if it feels basic.';render([],$('askResults'));return}const terms=q.toLowerCase().replace(/[^a-z0-9\s]/g,' ').split(/\s+/).filter(t=>t.length>2);const ranked=allEntries.map(e=>({e,s:terms.reduce((n,t)=>n+([e.title,e.category,e.contributor,e.text,...(e.tags||[])].join(' ').toLowerCase().includes(t)?1:0),0)})).filter(x=>x.s>0).sort((a,b)=>b.s-a.s).map(x=>x.e);$('answerText').textContent=ranked.length?`The House remembers ${ranked.length} related ${ranked.length===1?'item':'items'}.`:'The House does not know that yet.';render(ranked,$('askResults'))}
-function backup(){const h=activeHouse(),blob=new Blob([JSON.stringify({format:'ask-the-house-backup',version:'0.9',house:{id:h.id,name:h.name,secret:h.secret},exportedAt:now(),entries:allRecords},null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=(h.name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'ask-the-house')+'-backup.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),500)}
+function backup(){const h=activeHouse(),blob=new Blob([JSON.stringify({format:'ask-the-house-backup',version:'0.9.1',house:{id:h.id,name:h.name,secret:h.secret},exportedAt:now(),entries:allRecords},null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=(h.name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'ask-the-house')+'-backup.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),500)}
 async function importBackupFile(f){const p=JSON.parse(await f.text());if(!p.house?.id||!p.house?.secret||!Array.isArray(p.entries))throw 0;let h=houses.find(x=>x.id===p.house.id);if(!h){if(!confirm(`Add ${p.house.name||'this House'} to this device?`))return;h={id:p.house.id,name:p.house.name||'Imported House',secret:p.house.secret,createdAt:now()};houses.push(h)}activeHouseId=h.id;saveHouses();const n=await mergeForHouse(p.entries,h.id);await refresh();toast(`Imported ${n} new or updated ${n===1?'item':'items'} into ${h.name}.`);show('house')}
 function newHouse(){const name=prompt('Name this House:','New House');if(!name?.trim())return;const h={id:uid(),name:name.trim(),secret:randomSecret(),createdAt:now()};houses.push(h);activeHouseId=h.id;saveHouses();refresh().then(()=>{resetEditor();show('home');toast(`${h.name} is ready.`)})}
 async function deleteHouse(){const h=activeHouse();if(!h)return;const warning=`Delete ${h.name} from this device?\n\nThis removes all ${allRecords.length} saved ${allRecords.length===1?'item':'items'} in this House from this device. This cannot be undone unless you have a backup or receive the House again.`;if(!confirm(warning))return;if(!confirm(`Final check: permanently delete ${h.name} from this device?`))return;const ids=allRecords.map(x=>x.id);if(ids.length){await new Promise((res,rej)=>{const tx=db.transaction(STORE,'readwrite'),st=tx.objectStore(STORE);ids.forEach(id=>st.delete(id));tx.oncomplete=res;tx.onerror=()=>rej(tx.error)})}houses=houses.filter(x=>x.id!==h.id);if(!houses.length){const replacement={id:uid(),name:'My House',secret:randomSecret(),createdAt:now()};houses=[replacement]}activeHouseId=houses[0].id;saveHouses();resetEditor();await refresh();show('home');toast(`${h.name} was deleted from this device.`)}
 function renameHouse(){const h=activeHouse(),name=prompt('Rename this House:',h.name);if(!name?.trim())return;h.name=name.trim();saveHouses();renderHouseSwitch();toast('House renamed.')}
 async function switchHouse(id){if(!houses.some(h=>h.id===id))return;activeHouseId=id;saveHouses();resetEditor();$('receivedNotice').classList.add('hidden');await refresh();show('home')}
 document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>{if(b.dataset.go==='add')resetEditor();show(b.dataset.go)});document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{if(b.dataset.view==='add')resetEditor();show(b.dataset.view)});$('houseSwitch').onchange=e=>switchHouse(e.target.value);$('entryForm').onsubmit=e=>{e.preventDefault();save(true)};$('saveOnlyBtn').onclick=()=>save(false);$('cancelEditBtn').onclick=()=>{resetEditor();show('house')};$('askBtn').onclick=ask;$('query').onkeydown=e=>{if(e.key==='Enter')ask()};$('newHouseBtn').onclick=newHouse;$('renameHouseBtn').onclick=renameHouse;$('deleteHouseBtn').onclick=deleteHouse;$('shareHouseBtn').onclick=shareEntireHouse;$('backupBtn').onclick=backup;$('restoreInput').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{await importBackupFile(f)}catch{toast('That House file could not be imported.')}finally{e.target.value=''}};
+
+$('shareNowBtn').onclick=openPreparedShare;
+$('copyShareBtn').onclick=copyShareMessage;
+$('closeShareBtn').onclick=closeShareModal;
+$('shareModal').onclick=e=>{if(e.target===$('shareModal'))closeShareModal()};
 ensureHouse();openDB().then(async()=>{await importLegacy();await refresh();show('home');await receive()}).catch(()=>toast('Local storage could not be opened in this browser.'));
 </script>
 </body></html>
