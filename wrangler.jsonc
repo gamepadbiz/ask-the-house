@@ -2,5 +2,11 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "ask-the-house-share",
   "main": "worker.js",
-  "compatibility_date": "2026-07-27"
+  "compatibility_date": "2026-07-27",
+  "kv_namespaces": [
+    {
+      "binding": "SHARES",
+      "id": "PASTE_YOUR_HOUSE_SHARE_NAMESPACE_ID_HERE"
+    }
+  ]
 }
